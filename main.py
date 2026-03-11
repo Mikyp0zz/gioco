@@ -192,15 +192,16 @@ def run_game():
                     if event.key == pygame.K_9: # Ultimate
                         p.ult_ready = True
                         p.ult_charge = 100
-                    if event.key == pygame.K_0: # DIFFICOLTÀ
-                        em.difficulty += 0.5    # Aumenta la forza dei nemici
-                        em.spawn_delay = max(0.1, em.spawn_delay - 0.2) # Diminuisce il tempo di spawn
-                        # Salviamo il riferimento nel player per mostrarlo nel menu UI
+                    if event.key == pygame.K_0:
+                        # Aumentiamo la base del cheat
+                        em.bonus_difficulty += 0.5 
+                        # Aggiorniamo il riferimento per la UI (legge il valore totale calcolato)
                         p.debug_diff_ref = em.difficulty 
-                        
-                    if event.key == pygame.K_RETURN:
-                        game_state = "PLAYING"
-                        em.paused = False
+                        print(f"CHEAT: Difficoltà Bonus aumentata! Totale: {em.difficulty:.2f}")
+                                    
+                        if event.key == pygame.K_RETURN:
+                            game_state = "PLAYING"
+                            em.paused = False
 
         # --- LOGICA DI GIOCO ---
         if game_state == "PLAYING":

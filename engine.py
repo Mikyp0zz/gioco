@@ -54,6 +54,7 @@ class EntityManager:
         
         self.start_time = time.time()
         self.elapsed_time = 0
+        self.bonus_difficulty = 0.0
         self.difficulty = 1.0
         self.shake_amount = 0
         self.paused = False 
@@ -135,9 +136,17 @@ class EntityManager:
     def update_logic(self, dt, width, height):
         if self.paused: return
         
+        # 1. Calcolo del tempo trascorso
         self.elapsed_time = time.time() - self.start_time
-        self.difficulty = 1.0 + (self.elapsed_time / 60)*2
+        
+        # 2. CALCOLO DIFFICOLTÀ: Base (1.0) + Tempo + Cheat
+        # Usiamo "=" e non "+=" per evitare che il valore cresca ad ogni frame
+        time_factor = self.elapsed_time / 60  # Aumenta di 1.0 ogni minuto
+        self.difficulty = 1.0 + time_factor + self.bonus_difficulty
+        
+        # 3. Aggiornamento automatico dello spawn delay in base alla difficoltà
         self.spawn_delay = max(0.2, 1.6 - (self.difficulty * 0.35))
+        
         # Smorza lo shake (Risolto il bug del tremolio infinito)
         if self.shake_amount > 0: 
             self.shake_amount = max(0, self.shake_amount - dt * 60)
