@@ -128,6 +128,10 @@ def run_game():
                                 t["kb_vel"] = (t["pos"] - p.pos).normalize() * 20
                                 p.ult_charge = min(100, p.ult_charge + 5)
                                 if p.ult_charge >= 100: p.ult_ready = True
+                    # Nel ciclo eventi di main.py, dentro: elif game_state == "PLAYING":
+                    if event.key == pygame.K_RETURN:  # Tasto INVIO
+                        game_state = "DEBUG"
+                        em.paused = True
 
                     # Dash
                     if event.key in [pygame.K_LSHIFT, pygame.K_RSHIFT] and p.dash_cd <= 0:
@@ -160,6 +164,43 @@ def run_game():
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r: run_game(); return
                     if event.key == pygame.K_ESCAPE: pygame.quit(); return
+             # Poi aggiungi un nuovo blocco elif per lo stato DEBUG
+            elif game_state == "DEBUG":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        game_state = "PLAYING"
+                        em.paused = False
+                    
+                    # Gestione Cheat Numerici
+                    if event.key == pygame.K_1: # Cura
+                        p.stats["hp"] = p.stats["max_hp"]
+                    if event.key == pygame.K_2: # Max HP
+                        p.stats["max_hp"] += 50
+                        p.stats["hp"] += 50 # Aumenta anche la salute attuale
+                    if event.key == pygame.K_3: # Attacco
+                        p.stats["atk"] += 50
+                    if event.key == pygame.K_4: # Velocità
+                        p.stats["speed"] += 2
+                    if event.key == pygame.K_5: # Orbe
+                        p.stats["orbs"] = p.stats.get("orbs", 0) + 1
+                    if event.key == pygame.K_6: # Critico
+                        p.stats["crit_chance"] = min(1.0, p.stats["crit_chance"] + 0.1)
+                    if event.key == pygame.K_7: # Rigenerazione
+                        p.stats["regen"] += 1.0
+                    if event.key == pygame.K_8: # XP / Level Up rapido
+                        p.xp += 100
+                    if event.key == pygame.K_9: # Ultimate
+                        p.ult_ready = True
+                        p.ult_charge = 100
+                    if event.key == pygame.K_0: # DIFFICOLTÀ
+                        em.difficulty += 0.5    # Aumenta la forza dei nemici
+                        em.spawn_delay = max(0.1, em.spawn_delay - 0.2) # Diminuisce il tempo di spawn
+                        # Salviamo il riferimento nel player per mostrarlo nel menu UI
+                        p.debug_diff_ref = em.difficulty 
+                        
+                    if event.key == pygame.K_RETURN:
+                        game_state = "PLAYING"
+                        em.paused = False
 
         # --- LOGICA DI GIOCO ---
         if game_state == "PLAYING":
@@ -281,9 +322,15 @@ def run_game():
             screen.blit(font.render("BOSS", True, WHITE), (WIDTH//2-20, 92))
 
         # Menu Overlays
-        if game_state == "MENU": ui.draw_main_menu()
-        elif game_state == "LEVEL_UP": ui.draw_level_up_menu()
-        elif game_state == "GAMEOVER": ui.draw_game_over(p.kills, f"{m:02d}:{s:02d}")
+        # Alla fine di main.py, dove disegni gli overlay:
+        if game_state == "MENU": 
+            ui.draw_main_menu()
+        elif game_state == "LEVEL_UP": 
+            ui.draw_level_up_menu()
+        elif game_state == "DEBUG": 
+            ui.draw_debug_menu() # <-- Aggiungi questo
+        elif game_state == "GAMEOVER": 
+            ui.draw_game_over(p.kills, f"{m:02d}:{s:02d}")
 
         pygame.display.flip()
 

@@ -136,9 +136,8 @@ class EntityManager:
         if self.paused: return
         
         self.elapsed_time = time.time() - self.start_time
-        self.difficulty = 1.0 + (self.elapsed_time / 60)
+        self.difficulty = 1.0 + (self.elapsed_time / 60)*2
         self.spawn_delay = max(0.2, 1.6 - (self.difficulty * 0.35))
-
         # Smorza lo shake (Risolto il bug del tremolio infinito)
         if self.shake_amount > 0: 
             self.shake_amount = max(0, self.shake_amount - dt * 60)

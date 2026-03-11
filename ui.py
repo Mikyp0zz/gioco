@@ -7,6 +7,8 @@ GOLD  = (241, 196, 15)
 GRAY  = (150, 150, 150)
 DARK_GRAY = (30, 30, 30)
 RED   = (255, 50, 50)
+CYAN  = (0, 255, 255)    # Aggiunto
+BLUE  = (52, 152, 219)  # Aggiunto per coerenza
 
 class UIManager:
     def __init__(self, screen, player, width, height):
@@ -113,3 +115,37 @@ class UIManager:
         
         self.screen.blit(t, (self.w//2 - t.get_width()//2, self.h//2 - 120))
         self.screen.blit(s, (self.w//2 - s.get_width()//2, self.h//2 + 50))
+        
+    def draw_debug_menu(self):
+        """Mostra le stats correnti e i tasti cheat."""
+        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        overlay.fill((10, 20, 40, 220)) 
+        self.screen.blit(overlay, (0, 0))
+
+        title = self.font_big.render("DEBUG CHEAT MENU", True, CYAN)
+        self.screen.blit(title, (self.w // 2 - title.get_width() // 2, 40))
+
+        s = self.player.stats
+        # Recuperiamo il valore della difficoltà salvato nel player (default 1.0)
+        diff_val = getattr(self.player, "debug_diff_ref", 1.0)
+
+        debug_info = [
+            f"1. FULL HEAL (HP: {int(s['hp'])}/{s['max_hp']})",
+            f"2. MAX HP +50 (Current: {s['max_hp']})",
+            f"3. ATK +50 (Current: {s['atk']})",
+            f"4. SPEED +2 (Current: {s['speed']})",
+            f"5. ADD ORB +1 (Current: {s.get('orbs', 0)})",
+            f"6. CRIT RATE +10% (Current: {int(s['crit_chance']*100)}%)",
+            f"7. REGEN +1 (Current: {s['regen']}/s)",
+            f"8. GIVE XP +100 (Current: {self.player.xp}/{self.player.xp_next})",
+            f"9. INSTANT ULTIMATE",
+            f"0. INCREASE DIFFICULTY (Current: x{diff_val:.1f})", # Nuova voce
+            "",
+            "Premere INVIO per tornare al gioco"
+        ]
+
+        for i, line in enumerate(debug_info):
+            # Il tasto 0 è dorato come gli altri
+            color = GOLD if (i < 10 and line != "") else WHITE
+            txt = self.font_main.render(line, True, color)
+            self.screen.blit(txt, (80, 100 + i * 35))
