@@ -8,8 +8,17 @@ from ui import UIManager
 # CONFIGURAZIONE
 WIDTH, HEIGHT = 800, 600
 FPS = 60
-# Colori (Alcuni aggiunti per coerenza)
-GREEN, WHITE, RED, BLUE, BLACK, GOLD, PURPLE, ORANGE, CYAN, GRAY = (46, 77, 35), (255, 255, 255), (200, 50, 50), (52, 152, 219), (10, 10, 10), (241, 196, 15), (155, 89, 182), (255, 140, 0), (0, 255, 255), (60, 60, 60)
+# Colori
+GREEN = (46, 77, 35)
+WHITE = (255, 255, 255)
+RED = (200, 50, 50)
+BLUE = (52, 152, 219)
+BLACK = (10, 10, 10)
+GOLD = (241, 196, 15)
+PURPLE = (155, 89, 182)
+ORANGE = (255, 140, 0)
+CYAN = (0, 255, 255)
+GRAY = (60, 60, 60)
 
 class Player:
     def __init__(self):
@@ -40,7 +49,8 @@ class Player:
         self.level += 1
         self.xp -= self.xp_next
         self.xp_next = int(self.xp_next * 1.3)
-        self.stats["hp"] = self.stats["max_hp"] # Cura al level up!
+        self.stats["hp"] = self.stats["max_hp"] # Cura completa
+        self.stats["crit_chance"] += 0.02 # +2% Critico automatico ad ogni livello
 
     def take_damage(self, amount):
         if not self.is_dashing:
@@ -69,8 +79,9 @@ class Player:
         self.pos.y = max(20, min(HEIGHT - 20, self.pos.y))
         self.rect.center = self.pos
 
-        # Rigenerazione scalata su dt
+        # Rigenerazione passiva
         self.stats["hp"] = min(self.stats["max_hp"], self.stats["hp"] + self.stats["regen"] * dt)
+
 
 def run_game():
     pygame.init()
@@ -91,6 +102,7 @@ def run_game():
         dt = clock.tick(FPS) / 1000
         keys = pygame.key.get_pressed()
 
+        # --- CICLO EVENTI ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT: return
             
@@ -100,7 +112,7 @@ def run_game():
             
             elif game_state == "PLAYING":
                 if event.type == pygame.KEYDOWN:
-                    # Spada
+                    # Attacco Spada
                     if event.key == pygame.K_SPACE and not is_attacking:
                         is_attacking, atk_timer = True, 0.15
                         ar = pygame.Rect(0,0,120,90) if abs(p.facing_dir.x) > abs(p.facing_dir.y) else pygame.Rect(0,0,90,120)
@@ -124,7 +136,7 @@ def run_game():
                         p.dash_cd = 0.8
                         em.create_particles(p.pos.x, p.pos.y, WHITE, 10)
 
-                    # Ultimate
+                    # Ultimate (Q)
                     if event.key == pygame.K_q and p.ult_ready:
                         p.ult_ready, p.ult_charge = False, 0
                         em.shake_amount = 25
@@ -149,10 +161,15 @@ def run_game():
                     if event.key == pygame.K_r: run_game(); return
                     if event.key == pygame.K_ESCAPE: pygame.quit(); return
 
-        # AGGIORNAMENTO LOGICA
+        # --- LOGICA DI GIOCO ---
         if game_state == "PLAYING":
             p.update(keys, dt)
             em.update_logic(dt, WIDTH, HEIGHT)
+            
+            # Spawn Timer ripristinato
+            if not em.boss and (time.time() - em.last_spawn > em.spawn_delay):
+                em.spawn_enemy(WIDTH, HEIGHT)
+                em.last_spawn = time.time()
             
             if is_attacking:
                 atk_timer -= dt
@@ -162,15 +179,18 @@ def run_game():
                 game_state = "LEVEL_UP"
                 em.paused = True
                 ui.generate_upgrades()
-            if p.stats["hp"] <= 0: game_state = "GAMEOVER"
+                
+            if p.stats["hp"] <= 0:
+                game_state = "GAMEOVER"
 
-        # DISEGNO (WORLD)
+        # --- RENDERING MONDO (display_surf) ---
         display_surf.fill(GREEN)
         
         # Gemme e Particelle
         for gem in em.gems: pygame.draw.rect(display_surf, CYAN, gem.rect)
         for part in em.particles:
-            s = pygame.Surface((4,4)); s.set_alpha(part.life); s.fill(part.color); display_surf.blit(s, part.pos)
+            s = pygame.Surface((4,4)); s.set_alpha(int(max(0, part.life))); s.fill(part.color)
+            display_surf.blit(s, part.pos)
 
         # Orbe Orbitali
         num_orbs = p.stats.get("orbs", 0)
@@ -187,7 +207,13 @@ def run_game():
                         if orb_r.colliderect(t["rect"]):
                             em.apply_damage(t, max(2, p.stats["atk"] * 0.05), 0)
 
-        # Entità (Y-Sorting)
+        # Rendering Fendente Spada (disegnato PRIMA delle entità o DIETRO di esse se preferisci)
+        if is_attacking and current_atk_rect:
+            atk_s = pygame.Surface((current_atk_rect.width, current_atk_rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(atk_s, (255, 255, 255, 120), (0, 0, current_atk_rect.width, current_atk_rect.height), border_radius=15)
+            display_surf.blit(atk_s, current_atk_rect.topleft)
+
+        # Entità ordinate per Y-Sort
         entities = [{"t":"p", "y":p.pos.y, "obj":p}]
         if em.boss: entities.append({"t":"b", "y":em.boss["pos"].y, "obj":em.boss})
         for en in em.enemies: entities.append({"t":"e", "y":en["pos"].y, "obj":en})
@@ -197,56 +223,67 @@ def run_game():
             if e["t"] == "p":
                 col = CYAN if p.is_dashing else BLUE
                 pygame.draw.circle(display_surf, col, p.pos, 20)
-                if is_attacking and current_atk_rect:
-                    atk_s = pygame.Surface((current_atk_rect.width, current_atk_rect.height), pygame.SRCALPHA)
-                    pygame.draw.rect(atk_s, (255,255,255,180), (0,0,current_atk_rect.width, current_atk_rect.height), border_radius=10)
-                    display_surf.blit(atk_s, current_atk_rect.topleft)
+            
+            elif e["t"] == "e":
+                en = e["obj"]
+                col = WHITE if en["hit_flash"] > 0 else (RED if en["type"]=="base" else (100,50,0) if en["type"]=="tank" else (200,200,0))
+                pygame.draw.rect(display_surf, col, en["rect"])
+                # Barre vita nemici comuni
+                if en["hp"] < en["max_hp"]:
+                    pygame.draw.rect(display_surf, BLACK, (en["pos"].x-15, en["pos"].y-25, 30, 4))
+                    pygame.draw.rect(display_surf, (50, 255, 50), (en["pos"].x-15, en["pos"].y-25, int(30 * (max(0, en["hp"])/en["max_hp"])), 4))
+            
             elif e["t"] == "b":
                 b = e["obj"]
                 col = WHITE if b["hit_flash"] > 0 else (120,0,0) if not b["phase2"] else (180,0,180)
                 pygame.draw.rect(display_surf, col, b["rect"])
-                if b["atk_zone_timer"] > 2.0: pygame.draw.circle(display_surf, ORANGE, b["pos"], 230, 2)
-            else:
-                en = e["obj"]
-                col = WHITE if en["hit_flash"] > 0 else (RED if en["type"]=="base" else (100,50,0) if en["type"]=="tank" else (200,200,0))
-                pygame.draw.rect(display_surf, col, en["rect"])
+                if b["atk_zone_timer"] > 2.0: 
+                    pygame.draw.circle(display_surf, ORANGE, b["pos"], 230, 2)
 
-        # Damage Numbers
+        # Numeri di Danno
         for dn in em.damage_numbers:
-            txt = font.render(str(dn["val"]), True, dn["color"])
-            txt.set_alpha(int(dn["life"] * 255))
-            display_surf.blit(txt, dn["pos"])
+            try:
+                txt_surf = font.render(str(dn["val"]), True, dn["color"])
+                txt_surf.set_alpha(int(max(0, dn["life"]) * 255))
+                display_surf.blit(txt_surf, dn["pos"])
+            except:
+                pass # Previene crash se l'alpha va fuori range
 
-        # Shake e Blit finale
-        shake_off = pygame.Vector2(random.uniform(-1,1), random.uniform(-1,1)) * em.shake_amount
-        screen.blit(display_surf, shake_off)
+        # Applica SHAKE
+        shake_x = random.uniform(-1, 1) * em.shake_amount
+        shake_y = random.uniform(-1, 1) * em.shake_amount
+        screen.blit(display_surf, (shake_x, shake_y))
 
-        # UI FIXED (Dopo lo shake!)
+        # --- UI STATICA (Fuori dallo shake) ---
         pygame.draw.rect(screen, BLACK, (0, 0, WIDTH, 75))
         pygame.draw.rect(screen, GRAY, (0, 75, WIDTH, 5))
-        pygame.draw.rect(screen, CYAN, (0, 75, int(WIDTH * (p.xp/p.xp_next)), 5))
+        pygame.draw.rect(screen, CYAN, (0, 75, int(WIDTH * (p.xp/max(1, p.xp_next))), 5))
         
-        # HP e Ult Bars
+        # Barre Player (HP e Ult)
         pygame.draw.rect(screen, (60,0,0), (20, 15, 200, 20))
-        pygame.draw.rect(screen, (0,200,80), (20, 15, int(200 * (p.stats['hp']/p.stats['max_hp'])), 20))
-        screen.blit(font.render(f"HP: {int(p.stats['hp'])}", True, WHITE), (20, 38))
+        pygame.draw.rect(screen, (0,200,80), (20, 15, int(200 * (max(0, p.stats['hp'])/p.stats['max_hp'])), 20))
+        screen.blit(font.render(f"HP: {int(max(0, p.stats['hp']))} / {p.stats['max_hp']}", True, WHITE), (20, 38))
         
         pygame.draw.rect(screen, (30,30,30), (240, 15, 150, 20))
         u_col = PURPLE if p.ult_ready else (100,100,100)
         pygame.draw.rect(screen, u_col, (240, 15, int(150 * (p.ult_charge/100)), 20))
         screen.blit(font.render("ULTIMATE (Q)" if p.ult_ready else "CHARGING", True, u_col), (240, 38))
 
-        # Boss Bar 
+        # Stats e Timer
+        m, s = divmod(int(em.elapsed_time), 60)
+        screen.blit(font.render(f"LVL: {p.level} | KILLS: {p.kills}", True, GOLD), (WIDTH-180, 15))
+        screen.blit(font.render(f"TIME: {m:02d}:{s:02d}", True, WHITE), (WIDTH-180, 38))
+
+        # Boss Bar
         if em.boss:
             pygame.draw.rect(screen, BLACK, (WIDTH//2-152, 90, 304, 20))
-            pygame.draw.rect(screen, RED, (WIDTH//2-150, 92, int(300 * (em.boss['hp']/em.boss['max_hp'])), 16))
+            pygame.draw.rect(screen, RED, (WIDTH//2-150, 92, int(300 * (max(0, em.boss['hp'])/em.boss['max_hp'])), 16))
+            screen.blit(font.render("BOSS", True, WHITE), (WIDTH//2-20, 92))
 
-        # Game States Overlays
+        # Menu Overlays
         if game_state == "MENU": ui.draw_main_menu()
         elif game_state == "LEVEL_UP": ui.draw_level_up_menu()
-        elif game_state == "GAMEOVER": 
-            m, s = divmod(int(em.elapsed_time), 60)
-            ui.draw_game_over(p.kills, f"{m:02d}:{s:02d}")
+        elif game_state == "GAMEOVER": ui.draw_game_over(p.kills, f"{m:02d}:{s:02d}")
 
         pygame.display.flip()
 

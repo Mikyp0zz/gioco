@@ -37,8 +37,10 @@ class ExperienceGem:
         if self.magnetized:
             # Velocità incrementale per evitare che la gemma orbiti senza essere presa
             self.speed += 25 * dt 
-            dir_to_p = (player_pos - self.pos).normalize()
-            self.pos += dir_to_p * self.speed
+            # Evita divisione per zero se la gemma è esattamente sul player
+            if dist > 0:
+                dir_to_p = (player_pos - self.pos).normalize()
+                self.pos += dir_to_p * self.speed
             self.rect.center = self.pos
 
 class EntityManager:
@@ -77,7 +79,7 @@ class EntityManager:
     def spawn_enemy(self, width, height):
         if self.boss or self.paused: return
         
-        # Spawn fuori schermo migliorato
+        # Spawn fuori schermo
         angle = random.uniform(0, math.pi * 2)
         dist = max(width, height) * 0.7
         x = width//2 + math.cos(angle) * dist
@@ -101,13 +103,33 @@ class EntityManager:
             "hit_flash": 0, "kb_vel": pygame.Vector2(0, 0)
         })
 
+    def spawn_boss(self, width, height):
+        hp = 1500 * self.difficulty
+        self.boss = {
+            "pos": pygame.Vector2(width//2, 50), # Spawna in alto dentro lo schermo
+            "rect": pygame.Rect(0, 0, 110, 110),
+            "hp": hp, "max_hp": hp,
+            "speed": 1.3, "damage": 50,
+            "hit_flash": 0, "kb_vel": pygame.Vector2(0, 0),
+            "atk_zone_timer": 0, "phase2": False
+        }
+
     def apply_damage(self, entity, base_dmg, crit_chance):
         is_crit = random.random() < crit_chance
         final_dmg = base_dmg * (2.5 if is_crit else 1.0)
+        
+        # Sottrai la vita
         entity["hp"] -= final_dmg
-        entity["hit_flash"] = 0.15 # Leggermente più lungo per visibilità
+        entity["hit_flash"] = 0.15 
+        
+        # --- EFFETTO SANGUE ---
+        num_particles = 12 if is_crit else 6
+        self.create_particles(entity["pos"].x, entity["pos"].y, (180, 0, 0), num_particles)
+        
+        # Feedback numerico e scuotimento
         self.add_damage_number(entity["pos"].x, entity["pos"].y, final_dmg, is_crit)
         self.shake_amount = max(self.shake_amount, 12 if is_crit else 5)
+        
         return final_dmg
 
     def update_logic(self, dt, width, height):
@@ -117,8 +139,9 @@ class EntityManager:
         self.difficulty = 1.0 + (self.elapsed_time / 60)
         self.spawn_delay = max(0.2, 1.6 - (self.difficulty * 0.35))
 
+        # Smorza lo shake (Risolto il bug del tremolio infinito)
         if self.shake_amount > 0: 
-            self.shake_amount -= dt * 60
+            self.shake_amount = max(0, self.shake_amount - dt * 60)
 
         # Update Damage Numbers
         for dn in self.damage_numbers[:]:
@@ -138,48 +161,9 @@ class EntityManager:
                 self.player.add_xp(gem.xp_val)
                 self.gems.remove(gem)
 
-        # --- LOGICA BOSS ---
-        if not self.boss and (time.time() - self.boss_spawn_timer > self.boss_interval):
-            self.spawn_boss(width, height)
-
-        if self.boss:
-            b = self.boss
-            if b["hp"] < b["max_hp"] * 0.5 and not b["phase2"]:
-                b["phase2"] = True
-                b["speed"] *= 1.5
-                b["damage"] *= 1.2
-                self.create_particles(b["pos"].x, b["pos"].y, ORANGE, 30)
-
-            # Movimento & Knockback
-            b["pos"] += b["kb_vel"]
-            b["kb_vel"] *= 0.9
-            dir_b = (self.player.pos - b["pos"])
-            if dir_b.length() > 5: 
-                b["pos"] += dir_b.normalize() * b["speed"]
-            
-            b["rect"].center = b["pos"]
-            if b["hit_flash"] > 0: b["hit_flash"] -= dt
-            
-            # Attacco AOE
-            b["atk_zone_timer"] += dt * (1.6 if b["phase2"] else 1.0)
-            if b["atk_zone_timer"] > 3.0:
-                if b["pos"].distance_to(self.player.pos) < 230:
-                    self.player.take_damage(b["damage"] * 0.8)
-                    self.shake_amount = 20
-                b["atk_zone_timer"] = 0
-            
-            if b["hp"] <= 0:
-                self.gems.append(ExperienceGem(b["pos"].x, b["pos"].y, 150))
-                self.player.kills += 10
-                self.boss = None
-                self.boss_spawn_timer = time.time()
-
         # --- LOGICA NEMICI COMUNI ---
-        if not self.boss and (time.time() - self.last_spawn > self.spawn_delay):
-            self.spawn_enemy(width, height)
-            self.last_spawn = time.time()
-
         for en in self.enemies[:]:
+            # Inerzia e movimento
             en["pos"] += en["kb_vel"]
             en["kb_vel"] *= 0.85
             
@@ -187,27 +171,70 @@ class EntityManager:
             if dir_e.length() > 2:
                 en["pos"] += dir_e.normalize() * en["speed"]
             
+            # CLAMPING (Muri invisibili)
+            en["pos"].x = max(20, min(width - 20, en["pos"].x))
+            en["pos"].y = max(20, min(height - 20, en["pos"].y))
+
             en["rect"].center = en["pos"]
-            if en["hit_flash"] > 0: en["hit_flash"] -= dt
+            
+            if en["hit_flash"] > 0: 
+                en["hit_flash"] -= dt
             
             # Collisione Player
             if en["rect"].colliderect(self.player.rect):
-                # Danno scalato sul tempo per evitare morti istantanee
                 self.player.take_damage(en["damage"] * dt)
                 
+            # Morte Nemico
             if en["hp"] <= 0:
+                self.create_particles(en["pos"].x, en["pos"].y, (200, 0, 0), 12) 
                 self.gems.append(ExperienceGem(en["pos"].x, en["pos"].y, 20))
                 self.player.kills += 1
                 self.enemies.remove(en)
 
-    def spawn_boss(self, width, height):
-        hp = 1000 * self.difficulty
-        self.boss = {
-            "pos": pygame.Vector2(width//2, -120),
-            "rect": pygame.Rect(0, 0, 110, 110),
-            "hp": hp, "max_hp": hp,
-            "speed": 1.3, "damage": 50,
-            "hit_flash": 0, "kb_vel": pygame.Vector2(0, 0),
-            "atk_zone_timer": 0, "phase2": False
-        }
-        self.shake_amount = 30
+        # --- LOGICA BOSS ---
+        # Spawn
+        if not self.boss and (time.time() - self.boss_spawn_timer > self.boss_interval):
+            self.spawn_boss(width, height)
+            
+        # Movimento e Attacchi Boss
+        if self.boss:
+            b = self.boss
+            b["pos"] += b["kb_vel"]
+            b["kb_vel"] *= 0.85
+            
+            dir_b = (self.player.pos - b["pos"])
+            if dir_b.length() > 5:
+                b["pos"] += dir_b.normalize() * b["speed"]
+            
+            # CLAMPING BOSS
+            b["pos"].x = max(55, min(width - 55, b["pos"].x))
+            b["pos"].y = max(55, min(height - 55, b["pos"].y))
+            b["rect"].center = b["pos"]
+
+            if b["hit_flash"] > 0: b["hit_flash"] -= dt
+
+            if b["rect"].colliderect(self.player.rect):
+                self.player.take_damage(b["damage"] * dt)
+            
+            # Transizione Fase 2
+            if b["hp"] <= b["max_hp"] * 0.5 and not b["phase2"]:
+                b["phase2"] = True
+                b["speed"] *= 1.5
+                b["damage"] *= 1.2
+                self.create_particles(b["pos"].x, b["pos"].y, ORANGE, 30)
+                
+            # Attacco AOE (Ad area)
+            b["atk_zone_timer"] += dt * (1.6 if b["phase2"] else 1.0)
+            if b["atk_zone_timer"] > 3.0:
+                if b["pos"].distance_to(self.player.pos) < 230:
+                    self.player.take_damage(b["damage"] * 0.8)
+                    self.shake_amount = max(self.shake_amount, 20)
+                b["atk_zone_timer"] = 0
+            
+            # Morte Boss
+            if b["hp"] <= 0:
+                self.create_particles(b["pos"].x, b["pos"].y, (200, 0, 0), 50)
+                self.gems.append(ExperienceGem(b["pos"].x, b["pos"].y, 150))
+                self.player.kills += 10
+                self.boss = None
+                self.boss_spawn_timer = time.time() # Resetta il timer per il prossimo boss

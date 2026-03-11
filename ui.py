@@ -4,7 +4,7 @@ import random
 # Colori UI (Centralizzati)
 WHITE = (255, 255, 255)
 GOLD  = (241, 196, 15)
-GRAY  = (150, 150, 150) # Reso un po' più chiaro per leggibilità
+GRAY  = (150, 150, 150)
 DARK_GRAY = (30, 30, 30)
 RED   = (255, 50, 50)
 
@@ -34,7 +34,9 @@ class UIManager:
 
     def generate_upgrades(self):
         """Seleziona 4 opzioni casuali e uniche dal pool."""
-        self.current_options = random.sample(self.upgrade_pool, 4)
+        # Se il pool ha meno di 4 elementi (per espansioni future), evita crash
+        count = min(len(self.upgrade_pool), 4)
+        self.current_options = random.sample(self.upgrade_pool, count)
 
     def draw_level_up_menu(self):
         """Disegna il menu di selezione upgrade."""
@@ -51,7 +53,7 @@ class UIManager:
         for i, opt in enumerate(self.current_options):
             rect = pygame.Rect(self.w // 2 - 220, 140 + i * 100, 440, 85)
             
-            # Effetto hover (opzionale: potremmo aggiungere un colore diverso se il mouse è sopra)
+            # Box Sfondo
             pygame.draw.rect(self.screen, DARK_GRAY, rect, border_radius=12)
             pygame.draw.rect(self.screen, GOLD, rect, 2, border_radius=12)
             
@@ -73,7 +75,7 @@ class UIManager:
         
         if opt["id"] == "hp":
             p.stats["max_hp"] += 20
-            p.stats["hp"] = p.stats["max_hp"] # Cura completa
+            p.stats["hp"] = p.stats["max_hp"]
         elif opt["id"] == "atk":
             p.stats["atk"] += 10
         elif opt["id"] == "spd":
@@ -85,6 +87,7 @@ class UIManager:
         elif opt["id"] == "orb":
             p.stats["orbs"] += 1
         elif opt["id"] == "dash":
+            # CORRETTO: Questi sono attributi diretti in main.py, non in stats
             p.dash_speed += 4
             p.dash_max_timer += 0.04
 
@@ -102,11 +105,10 @@ class UIManager:
         self.screen.blit(t3, (self.w//2 - t3.get_width()//2, self.h//2 + 80))
 
     def draw_main_menu(self):
-        self.screen.fill((15, 25, 15)) # Verde molto scuro
+        self.screen.fill((15, 25, 15))
         t = self.font_big.render("SWORD SURVIVOR", True, WHITE)
         s = self.font_main.render("Press SPACE to Start", True, GOLD)
         
-        # Disegna un cerchio decorativo dietro il titolo
         pygame.draw.circle(self.screen, (30, 60, 30), (self.w//2, self.h//2 - 100), 100)
         
         self.screen.blit(t, (self.w//2 - t.get_width()//2, self.h//2 - 120))
